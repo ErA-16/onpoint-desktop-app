@@ -1,0 +1,5 @@
+app_data.db
+build/
+dist/
+__pycache__/
+*.spec
