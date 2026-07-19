@@ -30,9 +30,9 @@ def build_signup_page():
     username_input.setPlaceholderText("Username")
     username_input.setFixedHeight(40)
 
-    # email_input = QLineEdit()
-    # email_input.setPlaceholderText("Email")
-    # email_input.setFixedHeight(40)
+    email_input = QLineEdit()
+    email_input.setPlaceholderText("Email")
+    email_input.setFixedHeight(40)
 
     password = QLineEdit()
     password.setPlaceholderText("Password")
@@ -48,7 +48,7 @@ def build_signup_page():
     fields_column.setSpacing(10)
     fields_column.addWidget(name_input)
     fields_column.addWidget(username_input)
-    # fields_column.addWidget(email_input)
+    fields_column.addWidget(email_input)
     fields_column.addWidget(password)
     fields_column.addWidget(confirm_password)
 
@@ -97,4 +97,4 @@ def build_signup_page():
     main_layout.addStretch()
 
     signup_page.setLayout(main_layout)
-    return signup_page, footer_link, name_input, username_input, password, confirm_password, check_box, signup_button
+    return signup_page, footer_link, name_input, username_input, email_input, password, confirm_password, check_box, signup_button

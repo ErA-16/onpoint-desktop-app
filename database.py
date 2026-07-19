@@ -1,154 +1,130 @@
-import sqlite3
 import hashlib
+from supabase_client import supabase
 import datetime
-
-def create_connection():
-    connection = sqlite3.connect("app_data.db")
-    return connection
-
-def create_users_table():
-    connection = create_connection()
-    cursor = connection.cursor()
-
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            username TEXT PRIMARY KEY,
-            full_name TEXT,
-            password TEXT,
-            photo_path TEXT
-        )
-    """)
-
-    connection.commit()
-    connection.close()
-
-def seed_default_user():
-    if not username_exists("admin"):
-        add_user("admin", "Admin", "Admin123!")
-
-def username_exists(username):
-    connection = create_connection()
-    cursor = connection.cursor()
-
-    cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
-    result = cursor.fetchone()
-
-    connection.close()
-    return result is not None
-
-def add_user(username, full_name, password):
-    connection = create_connection()
-    cursor = connection.cursor()
-
-    hashed_password = hash_password(password)
-
-    cursor.execute(
-        "INSERT INTO users (username, full_name, password) VALUES (?, ?, ?)",
-        (username, full_name, hashed_password)
-    )
-
-    connection.commit()
-    connection.close()
 
 
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
 
+def username_exists(username):
+    result = supabase.table("users").select("*").eq("username", username).execute()
+    return len(result.data) > 0
+
+
+def add_user(username, full_name, password, email):
+    hashed_password = hash_password(password)
+    supabase.table("users").insert({
+        "username": username,
+        "full_name": full_name,
+        "password": hashed_password,
+        "email": email
+    }).execute()
+
+
 def get_stored_password(username):
-    connection = create_connection()
-    cursor = connection.cursor()
-
-    cursor.execute("SELECT password FROM users WHERE username = ?", (username,))
-    result = cursor.fetchone()
-
-    connection.close()
-
-    if result is None:
+    result = supabase.table("users").select("password").eq("username", username).execute()
+    if len(result.data) == 0:
         return None
-    return result[0]
+    return result.data[0]["password"]
+
 
 def get_full_name(username):
-    connection = create_connection()
-    cursor = connection.cursor()
-
-    cursor.execute("SELECT full_name FROM users WHERE username = ?", (username,))
-    result = cursor.fetchone()
-
-    connection.close()
-
-    if result is None:
+    result = supabase.table("users").select("full_name").eq("username", username).execute()
+    if len(result.data) == 0:
         return None
-    return result[0]
-
-def create_posts_table():
-    connection = create_connection()
-    cursor = connection.cursor()
-
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS posts (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT,
-            content TEXT,
-            created_at TEXT
-        )
-    """)
-
-    connection.commit()
-    connection.close()
+    return result.data[0]["full_name"]
 
 
-def add_post(username, content):
-    connection = create_connection()
-    cursor = connection.cursor()
+def seed_default_user():
+    if not username_exists("admin"):
+        add_user("admin", "Admin", "Admin123!", "admin@example.com")
 
-    timestamp = datetime.datetime.now().strftime("%B %d, %Y, %I:%M %p")
-
-    cursor.execute(
-        "INSERT INTO posts (username, content, created_at) VALUES (?, ?, ?)",
-        (username, content, timestamp)
-    )
-
-    connection.commit()
-    connection.close()
+def add_post(username, content, image_url=None):
+    supabase.table("posts").insert({
+        "username": username,
+        "content": content,
+        "image_url": image_url
+    }).execute()
 
 
 def get_posts_by_user(username):
-    connection = create_connection()
-    cursor = connection.cursor()
+    result = supabase.table("posts").select("content, created_at, image_url").eq("username", username).order("id", desc=True).execute()
+    return [(row["content"], row["created_at"], row["image_url"]) for row in result.data]
 
-    cursor.execute(
-        "SELECT content, created_at FROM posts WHERE username = ? ORDER BY id DESC",
-        (username,)
-    )
-    results = cursor.fetchall()
-
-    connection.close()
-    return results
 
 def update_password(username, new_password):
-    connection = create_connection()
-    cursor = connection.cursor()
-
     hashed_password = hash_password(new_password)
+    supabase.table("users").update({"password": hashed_password}).eq("username", username).execute()
 
-    cursor.execute("UPDATE users SET password = ? WHERE username = ?", (hashed_password, username))
-
-    connection.commit()
-    connection.close()
 
 def update_photo_path(username, path):
-    connection = create_connection()
-    cursor = connection.cursor()
-    cursor.execute("UPDATE users SET photo_path = ? WHERE username = ?", (path, username))
-    connection.commit()
-    connection.close()
+    supabase.table("users").update({"photo_path": path}).eq("username", username).execute()
 
 
 def get_photo_path(username):
-    connection = create_connection()
-    cursor = connection.cursor()
-    cursor.execute("SELECT photo_path FROM users WHERE username = ?", (username,))
-    result = cursor.fetchone()
-    connection.close()
-    return result[0] if result else None
+    result = supabase.table("users").select("photo_path").eq("username", username).execute()
+    if len(result.data) == 0:
+        return None
+    return result.data[0]["photo_path"]
+
+def update_contact_info(username, email, phone):
+    supabase.table("users").update({"email": email, "phone": phone}).eq("username", username).execute()
+
+
+def get_contact_info(username):
+    result = supabase.table("users").select("email, phone").eq("username", username).execute()
+    if len(result.data) == 0:
+        return "", ""
+    return result.data[0]["email"], result.data[0]["phone"]
+
+def update_username(old_username, new_username):
+    supabase.table("users").update({"username": new_username}).eq("username", old_username).execute()
+
+def upload_post_image(username, file_path):
+    file_name = f"{username}_{datetime.datetime.now().timestamp()}.png"
+
+    with open(file_path, "rb") as file:
+        supabase.storage.from_("post-images").upload(file_name, file)
+
+    public_url = supabase.storage.from_("post-images").get_public_url(file_name)
+    return public_url
+
+
+def get_all_posts(exclude_username=None):
+    query = supabase.table("posts").select("username, content, created_at, image_url").order("id", desc=True)
+
+    if exclude_username:
+        query = query.neq("username", exclude_username)
+
+    result = query.execute()
+    return [(row["username"], row["content"], row["created_at"], row["image_url"]) for row in result.data]
+
+
+def send_message(sender, receiver, content):
+    supabase.table("messages").insert({
+        "sender": sender,
+        "receiver": receiver,
+        "content": content
+    }).execute()
+
+
+def get_conversation(user_a, user_b):
+    result = supabase.table("messages").select("sender, content, created_at").or_(
+        f"and(sender.eq.{user_a},receiver.eq.{user_b}),and(sender.eq.{user_b},receiver.eq.{user_a})"
+    ).order("id").execute()
+    return [(row["sender"], row["content"], row["created_at"]) for row in result.data]
+
+
+def get_conversations_list(username):
+    result = supabase.table("messages").select("sender, receiver, content, created_at").or_(
+        f"sender.eq.{username},receiver.eq.{username}"
+    ).order("id", desc=True).execute()
+
+    seen = {}
+    for row in result.data:
+        other_person = row["receiver"] if row["sender"] == username else row["sender"]
+        if other_person not in seen:
+            seen[other_person] = (row["content"], row["created_at"])
+
+    return seen
