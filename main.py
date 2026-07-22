@@ -1,11 +1,11 @@
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QColor, QPixmap, QPainter, QPainterPath
+from PySide6.QtGui import QColor, QPixmap, QPainter, QPainterPath, QFontMetrics
 from PySide6.QtWidgets import QApplication, QGraphicsDropShadowEffect, QLabel, QStackedWidget, QVBoxLayout, QHBoxLayout, QWidget, QDialog, QLineEdit, QPushButton, QFileDialog, QVBoxLayout as QVBoxLayoutDialog
 from login_interface import build_login_page
 from signup_interface import build_signup_page
-from database import username_exists, add_user, seed_default_user, get_stored_password, hash_password, get_full_name, add_post, get_posts_by_user, update_password, update_photo_path, get_photo_path, update_contact_info, get_contact_info, update_username, upload_post_image, get_all_posts, send_message, get_conversation, get_conversations_list
+from database import username_exists, add_user, seed_default_user, get_stored_password, hash_password, get_full_name, add_post, get_posts_by_user, update_password, update_photo_path, get_photo_path, update_contact_info, get_contact_info, update_username, upload_post_image, get_all_posts, send_message, get_conversation, get_conversations_list, search_usernames
 from toast import Toast
-from welcome_interface import build_welcome_page
+from welcome_interface import build_welcome_page, load_pixmap_from_source
 from network_status import is_online
 from resource_path import get_resource_path
 
@@ -30,14 +30,14 @@ def on_photo_change(file_path):
 
 login_page, signup_link, username_input, user_password, login_button = build_login_page()
 signup_page, login_link, name_input, signup_username_input, email_input, signup_password, confirm_password, check_box, signup_button = build_signup_page()
-welcome_page, welcome_label, username_label, logout_button, collapse_sidebar, post_input, post_button, posts_layout, profile_name_label, username_value_label, fullname_value_label, change_password_button, set_avatar_from_path, contact_email_input, contact_phone_input, save_contact_button, change_username_button, attach_image_button, discover_posts_layout, image_preview_label, remove_image_button, search_user_input, search_user_button, chat_layout, message_input, send_message_button, inbox_layout, back_to_inbox_button, chat_header_avatar, chat_header_username, messages_stack = build_welcome_page(on_photo_change)
+welcome_page, welcome_label, username_label, logout_button, collapse_sidebar, post_input, post_button, posts_layout, profile_name_label, username_value_label, fullname_value_label, change_password_button, set_avatar_from_path, contact_email_input, contact_phone_input, save_contact_button, change_username_button, attach_image_button, discover_posts_layout, image_preview_label, remove_image_button, search_user_input, search_user_button, chat_layout, message_input, send_message_button, inbox_layout, back_to_inbox_button, chat_header_avatar, chat_header_username, messages_stack, reset_to_home, completer_model, search_completer = build_welcome_page(on_photo_change)
 
 
 def make_circular_avatar(username, size):
     photo_path = get_photo_path(username)
     source_path = photo_path if photo_path else get_resource_path("images/user_icon.png")
 
-    source = QPixmap(source_path).scaled(size, size, Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
+    source = load_pixmap_from_source(source_path).scaled(size, size, Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
 
     circular = QPixmap(size, size)
     circular.fill(Qt.GlobalColor.transparent)
@@ -85,7 +85,7 @@ def create_post_card(content, timestamp, image_url=None, author=None):
         pixmap.loadFromData(response.content)
 
         post_image_label = QLabel()
-        post_image_label.setPixmap(pixmap.scaledToWidth(300, Qt.TransformationMode.SmoothTransformation))
+        post_image_label.setPixmap(pixmap.scaledToWidth(200, Qt.TransformationMode.SmoothTransformation))
         post_image_label.setStyleSheet("border: none; margin-top: 6px;")
 
     time_label = QLabel(timestamp)
@@ -114,6 +114,10 @@ def check_login():
         Toast("No internet connection.", main_window)
         return
 
+    login_button.setText("Logging in...")
+    login_button.setEnabled(False)
+    QApplication.processEvents()
+
     entered_username = username_input.text().lower()
     entered_password = user_password.text()
 
@@ -121,10 +125,14 @@ def check_login():
         stored_hash = get_stored_password(entered_username)
     except Exception:
         Toast("Something went wrong connecting to the server. Please try again.", main_window)
+        login_button.setText("Login")
+        login_button.setEnabled(True)
         return
 
     if stored_hash is None:
         Toast("Username does not exist.", main_window)
+        login_button.setText("Login")
+        login_button.setEnabled(True)
     elif hash_password(entered_password) == stored_hash:
         try:
             full_name = get_full_name(entered_username)
@@ -140,6 +148,7 @@ def check_login():
             saved_email, saved_phone = get_contact_info(entered_username)
             contact_email_input.setText(saved_email or "")
             contact_phone_input.setText(saved_phone or "")
+            reset_to_home()
             collapse_sidebar()
             refresh_posts()
             refresh_discover()
@@ -147,8 +156,12 @@ def check_login():
             main_window.setCurrentIndex(2)
         except Exception:
             Toast("Something went wrong loading your account. Please try again.", main_window)
+        login_button.setText("Login")
+        login_button.setEnabled(True)
     else:
         Toast("Wrong username or password.", main_window)
+        login_button.setText("Login")
+        login_button.setEnabled(True)
 
 
 def check_signup():
@@ -156,27 +169,43 @@ def check_signup():
         Toast("No internet connection.", main_window)
         return
 
+    signup_button.setText("Signing up...")
+    signup_button.setEnabled(False)
+    QApplication.processEvents()
+
     if not check_box.isChecked():
         Toast("You must agree to the terms.", main_window)
+        signup_button.setText("Sign up")
+        signup_button.setEnabled(True)
     else:
         full_name = name_input.text().strip().capitalize()
 
         if full_name == "":
             Toast("Full name cannot be empty.", main_window)
+            signup_button.setText("Sign up")
+            signup_button.setEnabled(True)
         elif not all(char.isalpha() or char.isspace() for char in full_name):
             Toast("Full name can only contain letters and spaces.", main_window)
+            signup_button.setText("Sign up")
+            signup_button.setEnabled(True)
         else:
             username = signup_username_input.text().lower()
 
             if not username.isalnum():
                 Toast("Username can only contain letters and numbers.", main_window)
+                signup_button.setText("Sign up")
+                signup_button.setEnabled(True)
             elif username_exists(username):
                 Toast("Username already exists.", main_window)
+                signup_button.setText("Sign up")
+                signup_button.setEnabled(True)
             else:
                 email = email_input.text().strip()
 
                 if "@" not in email or "." not in email:
                     Toast("Please enter a valid email.", main_window)
+                    signup_button.setText("Sign up")
+                    signup_button.setEnabled(True)
                 else:
                     pw = signup_password.text()
                     confirm = confirm_password.text()
@@ -199,6 +228,9 @@ def check_signup():
                         add_user(username, full_name, pw, email)
                         Toast("Account created successfully!", main_window)
                         main_window.setCurrentIndex(0)
+
+                    signup_button.setText("Sign up")
+                    signup_button.setEnabled(True)
 
 
 def choose_post_image():
@@ -266,7 +298,7 @@ def refresh_discover():
         item = discover_posts_layout.takeAt(0)
         item.widget().deleteLater()
 
-    posts = get_all_posts(exclude_username=current_user[0])
+    posts = get_all_posts()
 
     for username, content, timestamp, image_url in posts:
         card = create_post_card(content, timestamp, image_url, author=username)
@@ -400,6 +432,9 @@ def create_message_bubble(sender, content):
     bubble.setWordWrap(True)
     bubble.setMaximumWidth(240)
 
+    text_width = QFontMetrics(bubble.font()).horizontalAdvance(content) + 28
+    bubble.setMinimumWidth(min(text_width, 240))
+
     if sender == current_user[0]:
         bubble.setStyleSheet("""
             QLabel {
@@ -445,17 +480,6 @@ def refresh_chat():
         chat_layout.insertLayout(chat_layout.count() - 1, bubble_row)
 
 
-def poll_active_chat():
-    if messages_stack.currentIndex() == 1 and current_chat_partner[0]:
-        refresh_chat()
-
-chat_poll_timer = QTimer()
-chat_poll_timer.timeout.connect(poll_active_chat)
-chat_poll_timer.start(3000)
-
-
-
-
 def open_chat(username):
     current_chat_partner[0] = username
     chat_header_username.setText(f"@{username}")
@@ -491,8 +515,8 @@ def create_inbox_row(other_username, last_message):
     avatar.setFixedSize(40, 40)
     avatar.setPixmap(make_circular_avatar(other_username, 40))
 
-    username_label = QLabel(f"@{other_username}")
-    username_label.setStyleSheet("font-weight: bold; font-size: 13px; border: none; background: transparent;")
+    username_label_row = QLabel(f"@{other_username}")
+    username_label_row.setStyleSheet("font-weight: bold; font-size: 13px; border: none; background: transparent;")
 
     preview_text = last_message if len(last_message) <= 40 else last_message[:40] + "..."
     preview_label = QLabel(preview_text)
@@ -500,7 +524,7 @@ def create_inbox_row(other_username, last_message):
 
     text_col = QVBoxLayout()
     text_col.setSpacing(2)
-    text_col.addWidget(username_label)
+    text_col.addWidget(username_label_row)
     text_col.addWidget(preview_label)
 
     row_layout = QHBoxLayout()
@@ -533,7 +557,7 @@ def search_user():
         Toast("No internet connection.", main_window)
         return
 
-    target_username = search_user_input.text().strip().lower()
+    target_username = search_user_input.text().strip().lower().lstrip("@")
 
     if target_username == current_user[0]:
         Toast("You can't message yourself.", main_window)
@@ -544,6 +568,37 @@ def search_user():
         open_chat(target_username)
 
 search_user_button.clicked.connect(search_user)
+
+
+search_debounce_timer = QTimer()
+search_debounce_timer.setSingleShot(True)
+
+def run_username_search():
+    term = search_user_input.text().strip().lower()
+    if term == "":
+        completer_model.setStringList([])
+        return
+
+    if not is_online():
+        return
+
+    results = search_usernames(term, current_user[0])
+    completer_model.setStringList([f"@{u}" for u in results])
+
+def on_search_text_changed():
+    search_debounce_timer.stop()
+    search_debounce_timer.start(300)
+
+search_debounce_timer.timeout.connect(run_username_search)
+search_user_input.textChanged.connect(on_search_text_changed)
+
+
+def open_chat_from_search(selected_text):
+    target_username = selected_text.lstrip("@")
+    search_user_input.clear()
+    open_chat(target_username)
+
+search_completer.activated.connect(open_chat_from_search)
 
 
 def handle_send_message():
@@ -566,6 +621,15 @@ def handle_send_message():
         refresh_inbox()
 
 send_message_button.clicked.connect(handle_send_message)
+
+
+def poll_active_chat():
+    if messages_stack.currentIndex() == 1 and current_chat_partner[0]:
+        refresh_chat()
+
+chat_poll_timer = QTimer()
+chat_poll_timer.timeout.connect(poll_active_chat)
+chat_poll_timer.start(3000)
 
 
 def logout():

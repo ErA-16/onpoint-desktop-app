@@ -1,7 +1,23 @@
-from PySide6.QtCore import Qt, QSize
+from PySide6.QtCore import Qt, QSize, QStringListModel
 from PySide6.QtGui import QIcon, QPixmap, QPainter, QPainterPath
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QStackedWidget, QTextEdit, QFileDialog, QScrollArea, QLineEdit
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QStackedWidget, QTextEdit, QFileDialog, QScrollArea, QLineEdit, QCompleter
 from resource_path import get_resource_path
+import requests
+
+
+
+def load_pixmap_from_source(path):
+    pixmap = QPixmap()
+    if path.startswith("http"):
+        try:
+            response = requests.get(path, timeout=10)
+            pixmap.loadFromData(response.content)
+        except Exception:
+            pixmap.load(get_resource_path("images/user_icon.png"))
+    else:
+        pixmap.load(path)
+    return pixmap
+
 
 
 def build_sidebar_button(text):
@@ -32,7 +48,7 @@ def build_sidebar_button(text):
 
 
 def make_circular_pixmap(path, size):
-    source = QPixmap(path).scaled(size, size, Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
+    source = load_pixmap_from_source(path).scaled(size, size, Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
 
     circular = QPixmap(size, size)
     circular.fill(Qt.GlobalColor.transparent)
@@ -182,6 +198,7 @@ def build_welcome_page(on_photo_change=None):
     posts_scroll_area = QScrollArea()
     posts_scroll_area.setWidget(posts_container)
     posts_scroll_area.setWidgetResizable(True)
+    posts_scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
     posts_scroll_area.setStyleSheet("border: none;")
 
     home_layout = QVBoxLayout()
@@ -193,7 +210,6 @@ def build_welcome_page(on_photo_change=None):
     home_layout.addWidget(remove_image_button)
     home_layout.addLayout(post_button_row)
     home_layout.addWidget(posts_scroll_area)
-    home_layout.addStretch()
     home_page.setLayout(home_layout)
 
     sidebar_expanded = [True]
@@ -249,6 +265,7 @@ def build_welcome_page(on_photo_change=None):
     discover_scroll_area = QScrollArea()
     discover_scroll_area.setWidget(discover_posts_container)
     discover_scroll_area.setWidgetResizable(True)
+    discover_scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
     discover_scroll_area.setStyleSheet("border: none;")
 
     discover_layout = QVBoxLayout()
@@ -265,6 +282,14 @@ def build_welcome_page(on_photo_change=None):
     search_user_input = QLineEdit()
     search_user_input.setPlaceholderText("Search username...")
     search_user_input.setFixedHeight(40)
+
+    completer_model = QStringListModel()
+    search_completer = QCompleter()
+    search_completer.setModel(completer_model)
+    search_completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+    search_completer.setCompletionMode(QCompleter.CompletionMode.UnfilteredPopupCompletion)
+    search_user_input.setCompleter(search_completer)
+
 
     search_user_button = QPushButton("Search")
     search_user_button.setFixedSize(90, 36)
@@ -555,6 +580,11 @@ def build_welcome_page(on_photo_change=None):
         for button in nav_page_buttons:
             button.setChecked(button is clicked_button)
 
+    
+    def reset_to_home():
+        content_stack.setCurrentIndex(0)
+        set_active_button(home_button)
+
     home_button.clicked.connect(lambda: content_stack.setCurrentIndex(0))
     discover_button.clicked.connect(lambda: content_stack.setCurrentIndex(1))
     messages_button.clicked.connect(lambda: content_stack.setCurrentIndex(2))
@@ -577,4 +607,4 @@ def build_welcome_page(on_photo_change=None):
     page_layout.addWidget(content_stack)
     welcome_page.setLayout(page_layout)
 
-    return welcome_page, welcome_label, username_label, logout_button, collapse_sidebar, post_input, post_button, posts_layout, profile_name_label, username_value_label, fullname_value_label, change_password_button, set_avatar_from_path, contact_email_input, contact_phone_input, save_contact_button, change_username_button, attach_image_button, discover_posts_layout, image_preview_label, remove_image_button, search_user_input, search_user_button, chat_layout, message_input, send_message_button, inbox_layout, back_to_inbox_button, chat_header_avatar, chat_header_username, messages_stack
+    return welcome_page, welcome_label, username_label, logout_button, collapse_sidebar, post_input, post_button, posts_layout, profile_name_label, username_value_label, fullname_value_label, change_password_button, set_avatar_from_path, contact_email_input, contact_phone_input, save_contact_button, change_username_button, attach_image_button, discover_posts_layout, image_preview_label, remove_image_button, search_user_input, search_user_button, chat_layout, message_input, send_message_button, inbox_layout, back_to_inbox_button, chat_header_avatar, chat_header_username, messages_stack, reset_to_home, completer_model, search_completer

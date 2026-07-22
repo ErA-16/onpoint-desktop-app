@@ -128,3 +128,7 @@ def get_conversations_list(username):
             seen[other_person] = (row["content"], row["created_at"])
 
     return seen
+
+def search_usernames(prefix, exclude_username):
+    result = supabase.table("users").select("username").ilike("username", f"{prefix}%").neq("username", exclude_username).limit(6).execute()
+    return [row["username"] for row in result.data]
